@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Full Color Screen</title>
+<meta name="description" content="Fill your whole screen with one solid color: black, white, red, green, blue and more.">
+<meta name="theme-color" content="#000000">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one full-bleed color field; a floating glass dock at the bottom that fades away when you stop moving */
+  :root {
+    --screen: #000000;
+    --dock-bg: rgba(15, 16, 20, 0.8);
+    --dock-solid: #0f1014;
+    --dock-line: rgba(255, 255, 255, 0.14);
+    --dock-fg: #f3f4f6;
+    --dock-muted: #9ca0aa;
+    --focus: #8ab4ff;
+    --font-ui: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+    --ease: cubic-bezier(.2, .7, .2, 1);
+    --swatch: 30px;
+    color-scheme: dark;
+  }
+  @media (pointer: coarse) { :root { --swatch: 36px; } }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: var(--screen);
+    color: var(--dock-fg);
+    font: 400 13px/1.4 var(--font-ui);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    -webkit-tap-highlight-color: transparent;
+  }
+  body.is-idle, body.is-idle * { cursor: none; }
+
+  .stage { position: fixed; inset: 0; }
+
+  .dock {
+    position: fixed;
+    left: max(16px, env(safe-area-inset-left, 0px));
+    right: max(16px, env(safe-area-inset-right, 0px));
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    width: fit-content;
+    margin-inline: auto;
+    display: grid;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--dock-bg);
+    border: 1px solid var(--dock-line);
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    backdrop-filter: blur(14px) saturate(140%);
+    transition: opacity .35s var(--ease), transform .35s var(--ease);
+    z-index: 2;
+  }
+  .dock.is-hidden { opacity: 0; transform: translateY(12px); pointer-events: none; }
+
+  .dock-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 14px; }
+  .swatches { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+
+  .swatch {
+    position: relative;
+    width: var(--swatch);
+    height: var(--swatch);
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--c);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.24);
+    cursor: pointer;
+    transition: transform .15s var(--ease), box-shadow .15s var(--ease);
+  }
+  .swatch:hover { transform: scale(1.08); }
+  .swatch[aria-pressed="true"], .swatch.is-active {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.24), 0 0 0 2px var(--dock-solid), 0 0 0 4px var(--dock-fg);
+  }
+  .swatch:focus-visible, .custom:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 4px; }
+
+  .custom {
+    display: block;
+    overflow: hidden;
+    background: conic-gradient(from 90deg, #ff0040, #ffbf00, #40ff00, #00ffbf, #0040ff, #bf00ff, #ff0040);
+  }
+  .custom::after {
+    content: "";
+    position: absolute;
+    inset: 8px;
+    border-radius: 50%;
+    background: var(--custom, transparent);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .custom.is-active::after { opacity: 1; }
+  .custom input { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; opacity: 0; cursor: pointer; }
+
+  .sep { width: 1px; height: 24px; background: var(--dock-line); }
+
+  .readout { display: grid; min-width: 84px; line-height: 1.25; }
+  .readout-name { font-weight: 500; font-size: 13px; }
+  .readout-hex { font: 400 12px/1.25 var(--font-mono); color: var(--dock-muted); letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+
+  .fs-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 34px;
+    padding: 0 12px;
+    border: 1px solid var(--dock-line);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--dock-fg);
+    font: 500 13px/1 var(--font-ui);
+    cursor: pointer;
+  }
+  .fs-btn:hover { background: rgba(255, 255, 255, 0.12); }
+  .fs-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .fs-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  .hints {
+    margin: 0;
+    padding-top: 8px;
+    border-top: 1px solid var(--dock-line);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 14px;
+    color: var(--dock-muted);
+    font-size: 11.5px;
+  }
+  .hints span { display: inline-flex; align-items: center; gap: 4px; }
+  kbd {
+    font: 500 10.5px/1 var(--font-mono);
+    color: var(--dock-fg);
+    padding: 3px 5px;
+    border: 1px solid var(--dock-line);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .toast {
+    position: fixed;
+    top: calc(16px + env(safe-area-inset-top, 0px));
+    left: max(16px, env(safe-area-inset-left, 0px));
+    right: max(16px, env(safe-area-inset-right, 0px));
+    width: fit-content;
+    margin-inline: auto;
+    padding: 9px 14px;
+    background: var(--dock-bg);
+    border: 1px solid var(--dock-line);
+    border-radius: 10px;
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    color: var(--dock-fg);
+    font-size: 13px;
+    z-index: 3;
+  }
+
+  @media (hover: none) { .hints { display: none; } }
+  @media (max-width: 560px) {
+    .sep { display: none; }
+    .swatches { max-width: calc(6 * var(--swatch) + 5 * 10px); gap: 10px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .dock, .swatch { transition: none; }
+    .swatch:hover { transform: none; }
+  }
+</style>
+</head>
+<body>
+<div class="stage" id="stage" aria-hidden="true"></div>
+
+<div class="dock" id="dock" role="group" aria-label="Screen color">
+  <div class="dock-row">
+    <div class="swatches" id="swatches">
+      <label class="swatch custom" id="custom-swatch" title="Any color (C)">
+        <input type="color" id="custom-color" value="#3366ff" aria-label="Pick any color">
+      </label>
+    </div>
+    <span class="sep" aria-hidden="true"></span>
+    <div class="readout" aria-live="polite">
+      <span class="readout-name" id="color-name">Black</span>
+      <span class="readout-hex" id="color-hex">#000000</span>
+    </div>
+    <button class="fs-btn" id="fs-btn" type="button" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path id="fs-icon" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      <span id="fs-label">Full screen</span>
+    </button>
+  </div>
+  <p class="hints">
+    <span><kbd>F</kbd> full screen</span>
+    <span><kbd>←</kbd><kbd>→</kbd> next color</span>
+    <span><kbd>1</kbd>–<kbd>0</kbd> pick a color</span>
+    <span><kbd>H</kbd> hide controls</span>
+  </p>
+</div>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+(() => {
+  // Edit this list to change the colors. Keys 1–9 and 0 pick the first ten in order.
+  const COLORS = [
+    { id: 'black',  name: 'Black',  hex: '#000000' },
+    { id: 'white',  name: 'White',  hex: '#FFFFFF' },
+    { id: 'red',    name: 'Red',    hex: '#FF0000' },
+    { id: 'green',  name: 'Green',  hex: '#00FF00' },
+    { id: 'blue',   name: 'Blue',   hex: '#0000FF' },
+    { id: 'yellow', name: 'Yellow', hex: '#FFFF00' },
+    { id: 'orange', name: 'Orange', hex: '#FF8000' },
+    { id: 'pink',   name: 'Pink',   hex: '#FF4FA3' },
+    { id: 'purple', name: 'Purple', hex: '#8000FF' },
+    { id: 'gray',   name: 'Gray',   hex: '#808080' },
+  ];
+  const IDLE_MS = 2500;
+  const STORE_KEY = 'full-color-screen';
+  const EXPAND = 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5';
+  const COLLAPSE = 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5';
+
+  const root = document.documentElement;
+  const $ = (id) => document.getElementById(id);
+  const stage = $('stage');
+  const dock = $('dock');
+  const customSwatch = $('custom-swatch');
+  const customInput = $('custom-color');
+  const nameEl = $('color-name');
+  const hexEl = $('color-hex');
+  const fsBtn = $('fs-btn');
+  const fsLabel = $('fs-label');
+  const fsIcon = $('fs-icon');
+  const toastEl = $('toast');
+  const themeMeta = document.querySelector('meta[name="theme-color"]');
+
+  const buttons = COLORS.map((c, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'swatch';
+    b.style.setProperty('--c', c.hex);
+    b.title = i < 10 ? `${c.name} (${(i + 1) % 10})` : c.name;
+    b.setAttribute('aria-label', c.name);
+    b.setAttribute('aria-pressed', 'false');
+    b.addEventListener('click', () => setColor(i));
+    $('swatches').insertBefore(b, customSwatch);
+    return b;
+  });
+
+  let current = 0;
+
+  // index >= 0 picks a preset; -1 uses `hex` as a custom color.
+  function setColor(index, hex, { remember = true } = {}) {
+    const preset = COLORS[index];
+    hex = (preset ? preset.hex : hex).toUpperCase();
+    current = preset ? index : -1;
+    root.style.setProperty('--screen', hex);
+    if (themeMeta) themeMeta.content = hex;
+    nameEl.textContent = preset ? preset.name : 'Custom';
+    hexEl.textContent = hex;
+    buttons.forEach((b, i) => b.setAttribute('aria-pressed', String(i === current)));
+    customSwatch.classList.toggle('is-active', current === -1);
+    if (current === -1) {
+      customSwatch.style.setProperty('--custom', hex);
+      customInput.value = hex.toLowerCase();
+    }
+    if (!remember) return;
+    const token = preset ? preset.id : hex.slice(1).toLowerCase();
+    try { history.replaceState(null, '', '#' + token); } catch (e) {}
+    try { localStorage.setItem(STORE_KEY, token); } catch (e) {}
+  }
+
+  // Accepts a color name ("red", "grey") or a 6-digit hex ("ff8800"), so links like page.html#ff8800 work.
+  function applyToken(raw) {
+    const t = String(raw || '').replace(/^#/, '').trim().toLowerCase();
+    const byName = COLORS.findIndex((c) => c.id === t || (t === 'grey' && c.id === 'gray'));
+    if (byName >= 0) { setColor(byName, null, { remember: false }); return true; }
+    if (/^[0-9a-f]{6}$/.test(t)) {
+      setColor(COLORS.findIndex((c) => c.hex.toLowerCase() === '#' + t), '#' + t, { remember: false });
+      return true;
+    }
+    return false;
+  }
+
+  function step(dir) {
+    const n = COLORS.length;
+    const from = current < 0 ? (dir > 0 ? -1 : 0) : current;
+    setColor((from + dir + n) % n);
+  }
+
+  customInput.addEventListener('click', () => setColor(-1, customInput.value));
+  customInput.addEventListener('input', () => setColor(-1, customInput.value));
+
+  // Controls fade out after a few idle seconds. H keeps them hidden until H, a click or a tap.
+  let idleTimer = 0;
+  let pinnedHidden = false;
+
+  function showControls() {
+    pinnedHidden = false;
+    dock.classList.remove('is-hidden');
+    document.body.classList.remove('is-idle');
+    scheduleHide();
+  }
+  function hideControls() {
+    clearTimeout(idleTimer);
+    dock.classList.add('is-hidden');
+    document.body.classList.add('is-idle');
+  }
+  function scheduleHide() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => (dock.matches(':hover') ? scheduleHide() : hideControls()), IDLE_MS);
+  }
+
+  let toastTimer = 0;
+  function toast(message, ms = 3200) {
+    toastEl.textContent = message;
+    toastEl.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toastEl.hidden = true; }, ms);
+  }
+
+  // Full screen, plus a screen wake lock while it lasts so the display doesn't dim.
+  const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement || null;
+  const fsSupported = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+  if (!fsSupported) fsBtn.hidden = true;
+
+  async function toggleFullscreen() {
+    try {
+      if (fsElement()) {
+        await (document.exitFullscreen ? document.exitFullscreen() : document.webkitExitFullscreen());
+      } else if (fsSupported) {
+        await (root.requestFullscreen ? root.requestFullscreen({ navigationUI: 'hide' }) : root.webkitRequestFullscreen());
+      } else {
+        throw new Error('Fullscreen unsupported');
+      }
+    } catch (e) {
+      toast("Full screen isn't available here. Use your browser's own full-screen mode instead.");
+    }
+  }
+
+  let wakeLock = null;
+  async function keepAwake(on) {
+    try {
+      if (on && !wakeLock && 'wakeLock' in navigator) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+      } else if (!on && wakeLock) {
+        await wakeLock.release();
+      }
+    } catch (e) {
+      wakeLock = null;
+    }
+  }
+
+  function onFullscreenChange() {
+    const on = !!fsElement();
+    fsBtn.setAttribute('aria-pressed', String(on));
+    fsLabel.textContent = on ? 'Exit full screen' : 'Full screen';
+    fsIcon.setAttribute('d', on ? COLLAPSE : EXPAND);
+    keepAwake(on);
+    if (on) scheduleHide();
+  }
+
+  document.addEventListener('fullscreenchange', onFullscreenChange);
+  document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && fsElement()) keepAwake(true);
+  });
+  fsBtn.addEventListener('click', toggleFullscreen);
+
+  let lastPointer = 'mouse';
+  stage.addEventListener('pointerdown', (e) => { lastPointer = e.pointerType; });
+  stage.addEventListener('click', () => {
+    if (dock.classList.contains('is-hidden')) showControls();
+    else if (lastPointer === 'touch') hideControls();
+  });
+  stage.addEventListener('dblclick', toggleFullscreen);
+  window.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'touch' && !pinnedHidden) showControls();
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const k = e.key;
+    if (k === 'f' || k === 'F') {
+      e.preventDefault();
+      toggleFullscreen();
+    } else if (k === 'h' || k === 'H') {
+      e.preventDefault();
+      if (dock.classList.contains('is-hidden')) {
+        showControls();
+      } else {
+        pinnedHidden = true;
+        hideControls();
+        toast('Controls hidden. Press H or click to bring them back.', 2200);
+      }
+    } else if (k === 'c' || k === 'C') {
+      setColor(-1, customInput.value);
+      try { customInput.showPicker ? customInput.showPicker() : customInput.click(); } catch (err) { customInput.click(); }
+    } else if (k === 'ArrowRight' || k === 'ArrowDown') {
+      e.preventDefault();
+      step(1);
+    } else if (k === 'ArrowLeft' || k === 'ArrowUp') {
+      e.preventDefault();
+      step(-1);
+    } else if (/^[0-9]$/.test(k)) {
+      const i = k === '0' ? 9 : Number(k) - 1;
+      if (COLORS[i]) setColor(i);
+    } else {
+      return;
+    }
+    if (!pinnedHidden && k !== 'h' && k !== 'H') showControls();
+  });
+
+  let saved = null;
+  try { saved = localStorage.getItem(STORE_KEY); } catch (e) {}
+  if (!applyToken(location.hash) && !applyToken(saved)) setColor(0, null, { remember: false });
+  window.addEventListener('hashchange', () => applyToken(location.hash));
+})();
+</script>
+</body>
+</html>
